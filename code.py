@@ -6,6 +6,7 @@
 # =============================================================================
 # Importation of librairies and datasets
 # =============================================================================
+
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
@@ -217,7 +218,7 @@ def nan_values(dataset):
     plt.show()
     
 
-#The three best feature component ['OverallQual' 'GrLivArea' 'ExterQual']
+# Annalysis of the three best feature component ['OverallQual' 'GrLivArea' 'ExterQual']
     
 def outliers_plot(dataset, title):
     plt.figure()
@@ -268,6 +269,7 @@ Id_kaggle = kaggle.index.values
 
 
     # Outliers
+    
 outliers_plot(dataset, 'Exploratory Analysis (with outliers)')
 
 outliers = []
@@ -278,7 +280,7 @@ outliers = outliers + dataset.index[mask].tolist()
 mask = (dataset['OverallQual'] == 1)
 outliers = outliers + dataset.index[mask].tolist()
 
-    # Data cleaning
+    # NA removing
 
 dataset = dataset.drop(outliers, axis = 0)
 
