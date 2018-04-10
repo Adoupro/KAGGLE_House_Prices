@@ -14,14 +14,17 @@ import datetime
 
 from sklearn.preprocessing import MinMaxScaler
 from sklearn.preprocessing import LabelEncoder
+
 from sklearn.model_selection import train_test_split
 from sklearn.model_selection import GridSearchCV
+from sklearn.model_selection import cross_val_score
 
 from sklearn.dummy import DummyRegressor
 from sklearn.linear_model import LinearRegression
 from sklearn.linear_model import Ridge
 from sklearn.linear_model import Lasso
 from sklearn.ensemble import RandomForestRegressor
+from sklearn.ensemble import GradientBoostingRegressor
 
 dataset = pd.read_csv('train.csv', index_col = 'Id')
 kaggle = pd.read_csv('test.csv', index_col = 'Id')
@@ -129,7 +132,6 @@ def data_cleaning(data):
     
     for column in binaries:
         encoder = LabelEncoder()
-        data[column] = data[column].fillna('Empty')
         data[column] = data[column].astype(str)
         data[column] = encoder.fit_transform(data[column])
         
@@ -168,10 +170,9 @@ def best_features(data, y_col, limit):
 
 # This function return the accuraties scores for differents baselines models
     
-def baseline(name, model):
-    model.fit(X_train, y_train)
-    complexity_score = model.score(X_train, y_train)
-    generalisation_score = model.score(X_test, y_test)
+def score_computation(name, model):
+    complexity_score = np.mean(cross_val_score(model, X_train, y_train, cv = 5))
+    generalisation_score = np.mean(cross_val_score(model, X_test, y_test, cv = 5))
     print('%s\n\nComplexity : %s.\nGeneralisation : %s.\n\n' % (name, complexity_score, generalisation_score))
 
 
@@ -180,18 +181,14 @@ def baseline(name, model):
 def top_parameters(name, model, params):
     print(name, '\n')
     
-    grid = GridSearchCV(model, param_grid = params, cv = 3)
-    grid.fit(X_train, y_train)
+    grid = GridSearchCV(model, param_grid = params, cv = 5)
+    grid.fit(X, y)
     
     parameters = grid.best_params_
-    complexity_score = grid.best_score_
+    score = grid.best_score_
     
-    grid = GridSearchCV(model, param_grid = params, cv = 3)
-    grid.fit(X_train, y_train)
-    
-    generalisation_score = grid.best_score_
     print('For parameters : %s.' % parameters)
-    print('Complexity : %s. \nGeneralisation : %s.\n\n' % (complexity_score, generalisation_score))
+    print('Score : %s.\n\n' % score)
     
     
 # For our Data exploratory
@@ -206,16 +203,18 @@ def nan_values(dataset):
     for col in columns : 
         mask = pd.isnull(dataset[col])
         count = len(dataset[col].loc[mask])
-        result.append([col, count/total])
+        if count > 0 :
+            ratio = np.round(count/total, 2)
+            result.append([col, ratio])
         
-    result = pd.DataFrame(result, columns = ['Column', 'NA Ratio'])
+    result = pd.DataFrame(result, columns = ['Name', 'NA Ratio'])
+    result = result.sort_values('NA Ratio', ascending = False).reset_index()
+    result = result[['Name', 'NA Ratio']]
     
-    plt.figure()
-    ax = plt.subplot(111, title = 'NA Values repartition')
-    ax.bar('Column', 'NA Ratio', data = result )
-    ax.set_xticklabels(result['Column'], rotation='vertical')
+    plt.figure(figsize = (20,20))
+    ax = result.plot('Name', 'NA Ratio', kind = 'bar', color = 'red', title = 'NA repartition')
+    ax.set_xticklabels(result['Name'], fontsize = 13, rotation = 'vertical')
     ax.set_ylabel('Ratio')
-    plt.show()
     
 
 # Annalysis of the three best feature component ['OverallQual' 'GrLivArea' 'ExterQual']
@@ -243,6 +242,7 @@ def outliers_plot(dataset, title):
     
     plt.show()
 
+
 # =============================================================================
 # Project
 # =============================================================================
@@ -265,7 +265,6 @@ columns = list(set(dataset_cols) & set(kaggle_cols))
 
 kaggle = kaggle[columns]
 Id_kaggle = kaggle.index.values
-
 
 
     # Outliers
@@ -310,43 +309,53 @@ X_train, X_test, y_train, y_test = train_test_split(X, y)
 # Normalisation of our X dataframe
 
 scaler = MinMaxScaler()
-scaler.fit(X_train)
+scaler.fit(X)
 
+X = scaler.transform(X)
 X_train = scaler.transform(X_train)
 X_test = scaler.transform(X_test)
 kaggle = scaler.transform(kaggle)
 
 
-# Computation of our baselines models scores.
+# Research of ours best parameters.
 
-names = ['Dummy Regression', 'Linear Regression']
-models = [DummyRegressor(), LinearRegression()]
-n = len(names)
-
-for i in range(n):
-    baseline(names[i], models[i])
-
-
-# Computation of our models scores.
-
-names = ['Ridge Regression', 'Lasso Regression', 'Random Forest Regressor']
-models = [Ridge(), Lasso(), RandomForestRegressor()]
-ridge_alpha = [value for value in range(1,500,20)]
-lasso_alpha = [value for value in range(10,200,10)]
+names = ['Ridge Regression', 'Lasso Regression', 'Random Forest Regressor', 'Gradient Boosted Regressor']
+models = [Ridge(), Lasso(), RandomForestRegressor(), GradientBoostingRegressor()]
+ridge_alpha = [value for value in range(1,100,10)]
+lasso_alpha = [value for value in range(10,100,10)]
 values = [value for value in range(4,11)]
+learning_rate = [0.1, 1, 10, 100]
 params = [{'alpha' : ridge_alpha },
           {'alpha' : lasso_alpha },
-          {'n_estimators' : values, 'max_features' : values, 'max_depth' : values}]
+          {'n_estimators' : values, 'max_features' : values, 'max_depth' : values},
+          {'n_estimators' : values, 'learning_rate' : learning_rate, 'max_depth' : values}]
 
+
+print('RECHERCHE DES MEILLEURS PARAMÈTRES\n\n')
 n = len(names)
 for i in range(n):
     top_parameters(names[i], models[i], params[i])
     
     
+# Computation of scores.
+
+names = ['Dummy Regression', 'Linear Regression', 'Ridge Regression',
+         'Lasso Regression', 'Random Forest Regressor', 'Gradient Boosted Regressor']
+models = [DummyRegressor(), LinearRegression(),
+          Ridge(alpha = 1), Lasso(alpha = 90),
+          RandomForestRegressor(max_depth = 9, max_features = 6, n_estimators = 9),
+          GradientBoostingRegressor(learning_rate = 1, max_depth = 9, n_estimators = 5)]
+
+print('CALCUL DES SCORES\n\n')
+n = len(names)
+for i in range(n):
+    score_computation(names[i], models[i])
+    
+    
 # Prediction of our kaggle dataset with our best model
 
-model = RandomForestRegressor(max_depth = 8, max_features = 6, n_estimators = 8)
-model.fit(X_train, y_train)
+model = RandomForestRegressor(max_depth = 10, max_features = 4, n_estimators = 10)
+model.fit(X, y)
 SalePrice = model.predict(kaggle)
 
 
