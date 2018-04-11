@@ -9,8 +9,10 @@
 
 import pandas as pd
 import numpy as np
-import matplotlib.pyplot as plt
 import datetime
+
+import matplotlib.pyplot as plt
+import seaborn as sns
 
 from sklearn.preprocessing import MinMaxScaler
 from sklearn.preprocessing import LabelEncoder
@@ -113,8 +115,7 @@ def data_cleaning(data):
     now = datetime.datetime.now()
     
     for column in dates:
-        median = np.mean(data[column])
-        data[column] = data[column].fillna(median)
+        data[column] = data[column].fillna(now.year)
         data[column] = data[column].astype('int')
         data[column] = pd.to_datetime(data[column], format="%Y")
         data[column] = data[column] - now
@@ -135,6 +136,7 @@ def data_cleaning(data):
         data[column] = data[column].astype(str)
         data[column] = encoder.fit_transform(data[column])
         
+        
     # nominals variables preprocessing
     
     for column in nominals:
@@ -143,7 +145,6 @@ def data_cleaning(data):
         dummies = data[column].str.get_dummies()
         data = pd.concat([data, dummies], axis = 1)
     
-    # Reduction of dimentionality 
     
     return data
 
@@ -160,11 +161,24 @@ def features_labels_split(data, y_col):
 # This function return a list of columns names. Only the columns names from X, which have a good correlation with our y column will be return.
     
 def best_features(data, y_col, limit):
-    correlation = np.abs(data.corr())
-    correlation = correlation[y_col].sort_values(ascending = False)
-    mask = correlation > limit
-    correlation = correlation[mask]
-    result = correlation.index.values[1:]
+    
+    # List of the best columns
+    
+    columns = np.abs(data.corr())
+    columns = columns[y_col].sort_values(ascending = False)
+    mask = columns > limit
+    columns = columns[mask].index.tolist()
+    result = columns[1:]
+    
+    # Matrix of correlation
+
+    matrix = data.corr()
+    matrix = matrix[columns].loc[columns]
+    
+    matrix = sns.clustermap(matrix, row_cluster = False, col_cluster = False )
+    plt.setp(matrix.ax_heatmap.get_yticklabels(), rotation = 'horizontal')
+    plt.setp(matrix.ax_heatmap.get_xticklabels(), rotation = 'vertical')
+    
     return result
 
 
@@ -211,38 +225,52 @@ def nan_values(dataset):
     result = result.sort_values('NA Ratio', ascending = False).reset_index()
     result = result[['Name', 'NA Ratio']]
     
-    plt.figure(figsize = (20,20))
-    ax = result.plot('Name', 'NA Ratio', kind = 'bar', color = 'red', title = 'NA repartition')
+    plt.figure()
+    ax = result.plot('Name', 'NA Ratio', kind = 'bar', color = 'red', title = 'NA repartition', legend = False)
     ax.set_xticklabels(result['Name'], fontsize = 13, rotation = 'vertical')
     ax.set_ylabel('Ratio')
     
 
 # Annalysis of the three best feature component ['OverallQual' 'GrLivArea' 'ExterQual']
     
-def outliers_plot(dataset, title):
+def outliers_plot(dataset, title, state = None):
     plt.figure()
     plt.suptitle(title, size = 20)
     
-    feature = 'OverallQual'
-    ax1 = plt.subplot(131, title = 'Quality of the house')
-    ax1.boxplot(feature, 1, data = dataset)
-    ax1.set_xticklabels([feature])
-    ax1.set_ylabel('Rating')
+    ax1 = plt.subplot(221, title = 'Ground living area')
+    if state == 'clean':
+        ax1.scatter('GrLivArea', 'SalePrice', data = dataset, alpha = 0.3)
+    else:
+        ax1.scatter('GrLivArea', 'SalePrice', data = dataset, c = mask_GrLivArea, alpha = 0.3)
+    ax1.set_xlabel('GrLivArea')
+    ax1.set_ylabel('SalePrice')
     
-    feature = 'ExterQual'
-    ax2 = plt.subplot(132, title = 'Quality of the material on the exterior')
+    feature = 'OverallQual'
+    ax2 = plt.subplot(222, title = 'Quality of the house')
     ax2.boxplot(feature, 1, data = dataset)
     ax2.set_xticklabels([feature])
     ax2.set_ylabel('Rating')
     
-    ax3 = plt.subplot(133, title = 'Ground living area')
-    ax3.scatter('GrLivArea', 'SalePrice', data = dataset, alpha = 0.3)
-    ax3.set_xlabel('GrLivArea')
+    ax3 = plt.subplot(223, title = 'Surface of the basement')
+    if state == 'clean':
+        ax3.scatter('TotalBsmtSF', 'SalePrice', data = dataset, alpha = 0.3)
+    else:
+        ax3.scatter('TotalBsmtSF', 'SalePrice', data = dataset, c = mask_TotalBsmtSF, alpha = 0.3)
+    ax3.set_xlabel('TotalBsmtSF')
     ax3.set_ylabel('SalePrice')
     
-    plt.show()
+    ax4 = plt.subplot(224, title = 'Car capacity')
+    ax4.boxplot('GarageCars', data = dataset)
+    ax4.set_xticklabels([feature])
+    ax4.set_ylabel('Car capacity')
+    
 
-
+# =============================================================================
+# [''KitchenQual' 'TotalBsmtSF'
+# 'GarageCars' '1stFlrSF' 'GarageArea' 'BsmtQual' 'FullBath' 'GarageFinish'
+# 'TotRmsAbvGrd' 'YearBuilt' 'FireplaceQu' 'YearRemodAdd']
+# =============================================================================
+    
 # =============================================================================
 # Project
 # =============================================================================
@@ -268,24 +296,32 @@ Id_kaggle = kaggle.index.values
 
 
     # Outliers
-    
-outliers_plot(dataset, 'Exploratory Analysis (with outliers)')
 
 outliers = []
 
-mask = (dataset['GrLivArea'] > 4000) & (dataset['SalePrice'] < 200000)
-outliers = outliers + dataset.index[mask].tolist()
+mask_GrLivArea = (dataset['GrLivArea'] > 4000) & (dataset['SalePrice'] < 200000)
+outliers = outliers + dataset.index[mask_GrLivArea].tolist()
 
-mask = (dataset['OverallQual'] == 1)
-outliers = outliers + dataset.index[mask].tolist()
+mask_OverallQual = (dataset['OverallQual'] == 1)
+outliers = outliers + dataset.index[mask_OverallQual].tolist()
+
+mask_TotalBsmtSF = (dataset['TotalBsmtSF'] > 5000)
+outliers = outliers + dataset.index[mask_TotalBsmtSF].tolist()
+
+mask_GarageCars = (dataset['GarageCars'] == 4)
+outliers = outliers + dataset.index[mask_GarageCars].tolist()
+    
+outliers_plot(dataset, 'Exploratory Analysis (with outliers)')
+
 
     # NA removing
 
 dataset = dataset.drop(outliers, axis = 0)
 
+
     # Checking
     
-outliers_plot(dataset, 'Exploratory Analysis (without outliers)')
+outliers_plot(dataset, 'Exploratory Analysis (without outliers)', state = 'clean')
         
 
 # Selection of the best features (Minimum 0.5 or -0.5 of correlation with the 'SalePrice' column)
@@ -323,12 +359,17 @@ names = ['Ridge Regression', 'Lasso Regression', 'Random Forest Regressor', 'Gra
 models = [Ridge(), Lasso(), RandomForestRegressor(), GradientBoostingRegressor()]
 ridge_alpha = [value for value in range(1,100,10)]
 lasso_alpha = [value for value in range(10,100,10)]
-values = [value for value in range(4,11)]
-learning_rate = [0.1, 1, 10, 100]
+
+values_RF = [value for value in range(4,11)]
+
+n_estimators_GB = [value for value in range(1,5)]
+max_depth_GB = [value for value in range(40,70,10)]
+learning_rate = [0.1, 0.5, 1]
+
 params = [{'alpha' : ridge_alpha },
           {'alpha' : lasso_alpha },
-          {'n_estimators' : values, 'max_features' : values, 'max_depth' : values},
-          {'n_estimators' : values, 'learning_rate' : learning_rate, 'max_depth' : values}]
+          {'n_estimators' : values_RF, 'max_features' : values_RF, 'max_depth' : values_RF},
+          {'n_estimators' : n_estimators_GB, 'learning_rate' : learning_rate, 'max_depth' : max_depth_GB}]
 
 
 print('RECHERCHE DES MEILLEURS PARAMÈTRES\n\n')
@@ -344,7 +385,7 @@ names = ['Dummy Regression', 'Linear Regression', 'Ridge Regression',
 models = [DummyRegressor(), LinearRegression(),
           Ridge(alpha = 1), Lasso(alpha = 90),
           RandomForestRegressor(max_depth = 9, max_features = 6, n_estimators = 9),
-          GradientBoostingRegressor(learning_rate = 1, max_depth = 9, n_estimators = 5)]
+          GradientBoostingRegressor(learning_rate = 0.1, max_depth = 3, n_estimators = 60)]
 
 print('CALCUL DES SCORES\n\n')
 n = len(names)
@@ -354,7 +395,7 @@ for i in range(n):
     
 # Prediction of our kaggle dataset with our best model
 
-model = RandomForestRegressor(max_depth = 10, max_features = 4, n_estimators = 10)
+model = GradientBoostingRegressor(learning_rate = 0.1, max_depth = 3, n_estimators = 60)
 model.fit(X, y)
 SalePrice = model.predict(kaggle)
 
